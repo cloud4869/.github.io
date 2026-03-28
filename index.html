@@ -1,0 +1,876 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>⚔️ 進撃ドロップ</title>
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+
+    body {
+      background: #0d0d1f;
+      display: flex;
+      justify-content: center;
+      align-items: center;
+      min-height: 100vh;
+      font-family: 'Segoe UI', system-ui, sans-serif;
+      user-select: none;
+    }
+
+    #app {
+      display: flex;
+      gap: 14px;
+      align-items: flex-start;
+    }
+
+    canvas#game {
+      cursor: none;
+      display: block;
+      border-radius: 20px;
+      box-shadow:
+        0 0 0 1px rgba(150, 100, 255, 0.25),
+        0 25px 70px rgba(0, 0, 0, 0.6),
+        0 0 100px rgba(100, 60, 255, 0.15);
+    }
+
+    #sidebar {
+      width: 148px;
+      display: flex;
+      flex-direction: column;
+      gap: 10px;
+    }
+
+    .card {
+      background: rgba(255, 255, 255, 0.04);
+      border: 1px solid rgba(255, 255, 255, 0.08);
+      border-radius: 14px;
+      padding: 12px 14px;
+      color: white;
+    }
+
+    .card-label {
+      font-size: 10px;
+      font-weight: 700;
+      letter-spacing: 0.12em;
+      color: rgba(255, 255, 255, 0.38);
+      text-transform: uppercase;
+      margin-bottom: 3px;
+    }
+
+    .card-value {
+      font-size: 28px;
+      font-weight: 800;
+      background: linear-gradient(135deg, #fff 40%, rgba(190, 160, 255, 0.85));
+      -webkit-background-clip: text;
+      -webkit-text-fill-color: transparent;
+      background-clip: text;
+      line-height: 1.1;
+    }
+
+    #nextCanvas { display: block; margin: 4px auto 0; }
+
+    .guide-item {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      font-size: 11px;
+      color: rgba(255, 255, 255, 0.45);
+      line-height: 1.65;
+    }
+
+    .guide-item .fi { font-size: 14px; }
+
+    #howto {
+      font-size: 11px;
+      color: rgba(255, 255, 255, 0.32);
+      line-height: 1.75;
+    }
+
+    #muteBtn {
+      background: rgba(255, 255, 255, 0.08);
+      border: 1px solid rgba(255, 255, 255, 0.14);
+      border-radius: 10px;
+      color: white;
+      font-size: 22px;
+      width: 100%;
+      padding: 6px 0;
+      cursor: pointer;
+      transition: background 0.15s;
+    }
+    #muteBtn:hover { background: rgba(255, 255, 255, 0.15); }
+
+    /* ─── スマホ対応レスポンシブ ──────────────────────── */
+    @media (max-width: 600px) {
+      body {
+        align-items: flex-start;
+        padding: 8px 0 24px;
+      }
+
+      #app {
+        flex-direction: column;
+        align-items: center;
+        width: 100%;
+        padding: 0 8px;
+        box-sizing: border-box;
+      }
+
+      canvas#game {
+        width: 100%;
+        max-width: 390px;
+        height: auto;
+        cursor: default;
+      }
+
+      #sidebar {
+        width: 100%;
+        max-width: 390px;
+        flex-direction: row;
+        flex-wrap: wrap;
+        gap: 8px;
+      }
+
+      .card {
+        flex: 1 1 80px;
+        min-width: 70px;
+        padding: 8px 10px;
+      }
+
+      .card-value {
+        font-size: 20px;
+      }
+
+      #nextCanvas {
+        width: 70px !important;
+        height: 42px !important;
+      }
+
+      #howto {
+        font-size: 10px;
+        line-height: 1.6;
+      }
+
+      #muteBtn {
+        font-size: 18px;
+        padding: 4px 0;
+      }
+    }
+  </style>
+</head>
+<body>
+<div id="app">
+  <canvas id="game" width="390" height="660"></canvas>
+
+  <div id="sidebar">
+    <div class="card">
+      <div class="card-label">Score</div>
+      <div class="card-value" id="scoreTxt">0</div>
+    </div>
+    <div class="card">
+      <div class="card-label">Best</div>
+      <div class="card-value" id="bestTxt">0</div>
+    </div>
+    <div class="card">
+      <div class="card-label">Next</div>
+      <canvas id="nextCanvas" width="120" height="72"></canvas>
+    </div>
+    <div class="card">
+      <div class="card-label">キャラ</div>
+      <div id="guide"></div>
+    </div>
+    <div class="card" style="padding:10px 14px">
+      <div class="card-label">Sound</div>
+      <button id="muteBtn" onclick="toggleMute()">🔊</button>
+    </div>
+    <div class="card">
+      <div class="card-label">How to play</div>
+      <div id="howto">
+        クリックで<br>キャラを落とす。<br>
+        同じキャラが<br>ぶつかると合体！<br>
+        エレンを目指せ⚔️
+      </div>
+    </div>
+  </div>
+</div>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/matter-js/0.19.0/matter.min.js"></script>
+<script>
+'use strict';
+
+// ─── Constants ────────────────────────────────────────────────────────────────
+const CW = 390, CH = 660;
+const WL = 10;
+const BL = 20, BR = 370, BB = 640, BT = 112;
+const DROP_Y = 58;
+
+const FRUITS = [
+  { name: 'コニー',     emoji: '😄',  r: 17,  color: '#8D6E63' },
+  { name: 'サシャ',     emoji: '🍖',  r: 25,  color: '#A1887F' },
+  { name: 'ハンジ',     emoji: '🔬',  r: 33,  color: '#6D4C41' },
+  { name: 'クリスタ',   emoji: '👑',  r: 43,  color: '#F9A825' },
+  { name: 'ベルトルト', emoji: '😰',  r: 53,  color: '#2E7D32' },
+  { name: 'ライナー',   emoji: '🛡️',  r: 63,  color: '#E65100' },
+  { name: 'アニ',       emoji: '❄️',  r: 73,  color: '#455A64' },
+  { name: 'アルミン',   emoji: '📖',  r: 83,  color: '#1565C0' },
+  { name: 'ミカサ',     emoji: '🗡️',  r: 93,  color: '#B71C1C' },
+  { name: 'リヴァイ',   emoji: '💪',  r: 105, color: '#37474F' },
+  { name: 'エレン',     emoji: '⚔️',  r: 117, color: '#795548' },
+];
+
+const SCORE_PER_LEVEL = [1, 3, 6, 10, 15, 21, 28, 36, 45, 55, 100];
+const MAX_LEVEL = FRUITS.length - 1;
+
+// キャラクター写真のパス（レベル順：1小→11大）
+const CHAR_IMG_PATHS = [
+  'photo/chara_detail_cony.png',     // 0: コニー（最小）
+  'photo/chara_detail_sasha.png',    // 1: サシャ
+  'photo/chara_detail_hanji.png',    // 2: ハンジ
+  'photo/chara_detail_kurista.png',  // 3: クリスタ
+  'photo/chara_detail_berutolt.png', // 4: ベルトルト
+  'photo/chara_detail_liner.png',    // 5: ライナー
+  'photo/ani.png',                   // 6: アニ
+  'photo/almin.png',                 // 7: アルミン
+  'photo/chara_detail_mikasa.png',   // 8: ミカサ
+  'photo/chara_detail_rivai.png',    // 9: リヴァイ
+  'photo/chara_detail_elen.png',     // 10: エレン（最大）
+];
+
+// 画像を事前ロード
+const charImgs = CHAR_IMG_PATHS.map(src => {
+  const img = new Image();
+  img.src = src;
+  return img;
+});
+
+// 進撃の巨人キャラクターデータ（グロー色などに使用）
+const AOTS = [
+  { name: 'コニー',     color: '#8D6E63', hair: '#795548', eyeC: '#A1887F', skin: '#FDEBD0' },
+  { name: 'サシャ',     color: '#A1887F', hair: '#6D4C41', eyeC: '#8D6E63', skin: '#FDEBD0' },
+  { name: 'ハンジ',     color: '#6D4C41', hair: '#5D4037', eyeC: '#8D6E63', skin: '#FDEBD0' },
+  { name: 'クリスタ',   color: '#F9A825', hair: '#FFD54F', eyeC: '#64B5F6', skin: '#FFF0E0' },
+  { name: 'ベルトルト', color: '#2E7D32', hair: '#3E2723', eyeC: '#6D4C41', skin: '#FDEBD0' },
+  { name: 'ライナー',   color: '#E65100', hair: '#FFC107', eyeC: '#795548', skin: '#F5CBA7' },
+  { name: 'アニ',       color: '#455A64', hair: '#FFE57F', eyeC: '#B0BEC5', skin: '#FDEBD0' },
+  { name: 'アルミン',   color: '#1565C0', hair: '#FFD54F', eyeC: '#42A5F5', skin: '#FFF0E0' },
+  { name: 'ミカサ',     color: '#B71C1C', hair: '#212121', eyeC: '#78909C', skin: '#FDEBD0' },
+  { name: 'リヴァイ',   color: '#37474F', hair: '#263238', eyeC: '#607D8B', skin: '#F0F0F0' },
+  { name: 'エレン',     color: '#795548', hair: '#5D4037', eyeC: '#4CAF50', skin: '#FDEBD0' },
+];
+
+// ─── Audio ────────────────────────────────────────────────────────────────────
+let audioCtx   = null;
+let masterGain = null;
+let sfxGain    = null;
+let muted      = false;
+
+// BGM用 Audio要素
+let bgmAudio = null;
+
+// SE pitch table: one note per fruit level (C major pentatonic, ascending)
+const MERGE_FREQS = [
+  261.63, 293.66, 329.63, 392.00, 440.00,
+  523.25, 587.33, 659.25, 783.99, 880.00, 1046.50,
+];
+
+function initAudio() {
+  if (audioCtx) return;
+
+  // Web Audio API（SE用）
+  audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+  masterGain = audioCtx.createGain();
+  masterGain.gain.value = 1;
+  masterGain.connect(audioCtx.destination);
+
+  sfxGain = audioCtx.createGain();
+  sfxGain.gain.value = 0.48;
+  sfxGain.connect(masterGain);
+
+  // BGM: MP3ファイルをループ再生
+  if (!bgmAudio) {
+    bgmAudio = new Audio('bgm/心臓を捧げよ！.mp3');
+    bgmAudio.loop   = true;  // ループ再生
+    bgmAudio.volume = 0.4;   // BGM音量（0.0〜1.0）
+  }
+  bgmAudio.play().catch(() => {}); // 自動再生ポリシー対策
+}
+
+// SE: drop (descending plop)
+function seDrop() {
+  if (!audioCtx) return;
+  const t = audioCtx.currentTime;
+  const osc = audioCtx.createOscillator();
+  const env = audioCtx.createGain();
+  osc.type = 'sine';
+  osc.frequency.setValueAtTime(680, t);
+  osc.frequency.exponentialRampToValueAtTime(160, t + 0.13);
+  env.gain.setValueAtTime(0.55, t);
+  env.gain.exponentialRampToValueAtTime(0.001, t + 0.13);
+  osc.connect(env); env.connect(sfxGain);
+  osc.start(t); osc.stop(t + 0.13);
+}
+
+// SE: merge chime (pitch scales with level)
+function seMerge(lv) {
+  if (!audioCtx) return;
+  const t   = audioCtx.currentTime;
+  const f   = MERGE_FREQS[lv];
+  const dur = 0.38 + lv * 0.025;
+  // Root + fifth + octave, staggered for a bloom effect
+  [[1, 0], [1.5, 0.045], [2, 0.09]].forEach(([ratio, delay]) => {
+    const osc = audioCtx.createOscillator();
+    const env = audioCtx.createGain();
+    osc.type = 'sine';
+    osc.frequency.value = f * ratio;
+    env.gain.setValueAtTime(0, t + delay);
+    env.gain.linearRampToValueAtTime(0.38, t + delay + 0.018);
+    env.gain.exponentialRampToValueAtTime(0.001, t + delay + dur);
+    osc.connect(env); env.connect(sfxGain);
+    osc.start(t + delay); osc.stop(t + delay + dur);
+  });
+}
+
+// SE: watermelon fanfare (ascending arpeggio)
+function seWatermelon() {
+  if (!audioCtx) return;
+  const t = audioCtx.currentTime;
+  [261.63, 329.63, 392.00, 523.25, 659.25, 783.99].forEach((freq, i) => {
+    const osc = audioCtx.createOscillator();
+    const env = audioCtx.createGain();
+    osc.type = 'sine';
+    osc.frequency.value = freq;
+    const d = i * 0.07;
+    env.gain.setValueAtTime(0, t + d);
+    env.gain.linearRampToValueAtTime(0.42, t + d + 0.02);
+    env.gain.exponentialRampToValueAtTime(0.001, t + d + 0.85);
+    osc.connect(env); env.connect(sfxGain);
+    osc.start(t + d); osc.stop(t + d + 0.85);
+  });
+}
+
+// SE: game over (sad descending scale)
+function seGameOver() {
+  if (!audioCtx) return;
+  const t = audioCtx.currentTime;
+  [392.00, 349.23, 329.63, 293.66, 261.63].forEach((freq, i) => {
+    const osc = audioCtx.createOscillator();
+    const env = audioCtx.createGain();
+    osc.type = 'sine';
+    osc.frequency.value = freq;
+    const d = i * 0.27;
+    env.gain.setValueAtTime(0, t + d);
+    env.gain.linearRampToValueAtTime(0.44, t + d + 0.04);
+    env.gain.exponentialRampToValueAtTime(0.001, t + d + 0.52);
+    osc.connect(env); env.connect(sfxGain);
+    osc.start(t + d); osc.stop(t + d + 0.52);
+  });
+}
+
+function toggleMute() {
+  initAudio();
+  muted = !muted;
+  // SE（Web Audio）のミュート切り替え
+  masterGain.gain.linearRampToValueAtTime(muted ? 0 : 1, audioCtx.currentTime + 0.1);
+  // BGM（MP3）のミュート切り替え
+  if (bgmAudio) {
+    if (muted) {
+      bgmAudio.pause();
+    } else {
+      bgmAudio.play().catch(() => {});
+    }
+  }
+  document.getElementById('muteBtn').textContent = muted ? '🔇' : '🔊';
+}
+
+// ─── Matter.js ────────────────────────────────────────────────────────────────
+const { Engine, Bodies, Body, World, Events } = Matter;
+
+const engine = Engine.create({ gravity: { x: 0, y: 2.2 } });
+const world  = engine.world;
+
+function mkWall(x, y, w, h) {
+  return Bodies.rectangle(x, y, w, h, {
+    isStatic: true, restitution: 0.1, friction: 0.5, label: 'wall'
+  });
+}
+
+World.add(world, [
+  mkWall(BL - WL/2, (BT + BB) / 2, WL, BB - BT + WL * 2), // left
+  mkWall(BR + WL/2, (BT + BB) / 2, WL, BB - BT + WL * 2), // right
+  mkWall((BL + BR) / 2, BB + WL/2, BR - BL + WL * 2, WL), // bottom
+]);
+
+// ─── State ────────────────────────────────────────────────────────────────────
+let fruits       = [];
+let particles    = [];
+let popups       = [];
+let pendingMerge = [];
+let mergingSet   = new Set();
+
+let score      = 0;
+let best       = parseInt(localStorage.getItem('fmBest') || '0');
+let curLevel   = rndLevel();
+let nxtLevel   = rndLevel();
+let canDrop    = true;
+let gameOver   = false;
+let dangerTick = 0;
+let mouseX     = CW / 2;
+let frame      = 0;
+
+function rndLevel() {
+  const w = [5, 4, 4, 3, 2, 1];
+  let s = w.reduce((a, b) => a + b, 0), r = Math.random() * s;
+  for (let i = 0; i < w.length; i++) { r -= w[i]; if (r <= 0) return i; }
+  return 0;
+}
+
+// ─── Fruit bodies ─────────────────────────────────────────────────────────────
+function spawnFruit(x, y, lv) {
+  const f = FRUITS[lv];
+  const body = Bodies.circle(x, y, f.r, {
+    restitution: 0.15, friction: 0.5, frictionStatic: 0.4,
+    density: 0.003, label: 'fruit',
+  });
+  body.fruitLevel = lv;
+  body.merging    = false;
+  body.newborn    = true;
+  body.vscale     = 0.15;
+  setTimeout(() => { body.newborn = false; }, 450);
+  fruits.push(body);
+  World.add(world, body);
+  return body;
+}
+
+function removeFruit(b) {
+  fruits = fruits.filter(f => f !== b);
+  mergingSet.delete(b.id);
+  World.remove(world, b);
+}
+
+// ─── Drop ─────────────────────────────────────────────────────────────────────
+function drop() {
+  if (!canDrop || gameOver) return;
+  canDrop = false;
+  const f  = FRUITS[curLevel];
+  const x  = clamp(mouseX, BL + f.r + 1, BR - f.r - 1);
+  spawnFruit(x, DROP_Y, curLevel);
+  burst(x, DROP_Y, f.color, 7);
+  seDrop();
+  curLevel = nxtLevel;
+  nxtLevel = rndLevel();
+  renderNext();
+  setTimeout(() => { canDrop = true; }, 500);
+}
+
+// ─── Collisions / merging ────────────────────────────────────────────────────
+Events.on(engine, 'collisionStart', ({ pairs }) => {
+  for (const { bodyA, bodyB } of pairs) {
+    if (bodyA.label !== 'fruit' || bodyB.label !== 'fruit') continue;
+    if (bodyA.fruitLevel !== bodyB.fruitLevel) continue;
+    if (mergingSet.has(bodyA.id) || mergingSet.has(bodyB.id)) continue;
+    mergingSet.add(bodyA.id);
+    mergingSet.add(bodyB.id);
+    bodyA.merging = bodyB.merging = true;
+    pendingMerge.push([bodyA, bodyB, bodyA.fruitLevel]);
+  }
+});
+
+function processMerges() {
+  if (!pendingMerge.length) return;
+  const queue = pendingMerge.splice(0);
+  for (const [a, b, lv] of queue) {
+    if (!fruits.includes(a) || !fruits.includes(b)) continue;
+    const mx = (a.position.x + b.position.x) / 2;
+    const my = (a.position.y + b.position.y) / 2;
+    removeFruit(a);
+    removeFruit(b);
+    const pts = SCORE_PER_LEVEL[lv] * 2;
+    addScore(pts, mx, my);
+    burst(mx, my, FRUITS[lv].color, 22);
+    if (lv < MAX_LEVEL) {
+      spawnFruit(mx, my, lv + 1);
+      seMerge(lv);
+    } else {
+      addScore(300, mx, my);
+      burst(mx, my, '#1B5E20', 50);
+      seWatermelon();
+    }
+  }
+}
+
+// ─── Score ────────────────────────────────────────────────────────────────────
+function addScore(pts, px, py) {
+  score += pts;
+  if (score > best) { best = score; localStorage.setItem('fmBest', best); }
+  document.getElementById('scoreTxt').textContent = score;
+  document.getElementById('bestTxt').textContent  = best;
+  if (px !== undefined) popups.push({ x: px, y: py, text: `+${pts}`, alpha: 1, vy: -1.6 });
+}
+
+// ─── Particles ───────────────────────────────────────────────────────────────
+function burst(x, y, color, n) {
+  for (let i = 0; i < n; i++) {
+    const a = Math.PI * 2 * i / n + (Math.random() - 0.5) * 0.5;
+    const s = 1.5 + Math.random() * 4.5;
+    particles.push({ x, y, vx: Math.cos(a)*s, vy: Math.sin(a)*s - 1.2,
+      r: 2 + Math.random() * 3, color, alpha: 1 });
+  }
+}
+
+function tickParticles() {
+  particles = particles.filter(p => {
+    p.x += p.vx; p.y += p.vy; p.vy += 0.13; p.vx *= 0.97; p.alpha -= 0.022;
+    return p.alpha > 0;
+  });
+  popups = popups.filter(p => {
+    p.y += p.vy; p.vy *= 0.94; p.alpha -= 0.017; return p.alpha > 0;
+  });
+}
+
+// ─── Game over ───────────────────────────────────────────────────────────────
+function checkGameOver() {
+  if (gameOver) return;
+  const danger = fruits.some(f => {
+    if (f.newborn || f.merging) return false;
+    const spd = Math.hypot(f.velocity.x, f.velocity.y);
+    return f.position.y - FRUITS[f.fruitLevel].r < BT && spd < 1.8;
+  });
+  dangerTick = danger ? dangerTick + 1 : 0;
+  if (dangerTick > 110) { gameOver = true; seGameOver(); }
+}
+
+function restart() {
+  fruits.forEach(f => World.remove(world, f));
+  fruits = []; particles = []; popups = [];
+  pendingMerge = []; mergingSet.clear();
+  score = 0; dangerTick = 0; gameOver = false; canDrop = true;
+  curLevel = rndLevel(); nxtLevel = rndLevel();
+  document.getElementById('scoreTxt').textContent = '0';
+  renderNext();
+}
+
+// ─── Helpers ─────────────────────────────────────────────────────────────────
+function clamp(v, lo, hi) { return Math.max(lo, Math.min(hi, v)); }
+
+function hex2rgb(hex) {
+  const n = parseInt(hex.replace('#', ''), 16);
+  return [(n >> 16) & 255, (n >> 8) & 255, n & 255];
+}
+
+function lighter(hex, amt) {
+  const [r, g, b] = hex2rgb(hex);
+  return `rgb(${Math.min(255,r+amt)},${Math.min(255,g+amt)},${Math.min(255,b+amt)})`;
+}
+
+function darker(hex, amt) {
+  const [r, g, b] = hex2rgb(hex);
+  return `rgb(${Math.max(0,r-amt)},${Math.max(0,g-amt)},${Math.max(0,b-amt)})`;
+}
+
+function rrect(ctx, x, y, w, h, r) {
+  ctx.beginPath();
+  ctx.moveTo(x + r, y);
+  ctx.lineTo(x + w - r, y);     ctx.quadraticCurveTo(x + w, y, x + w, y + r);
+  ctx.lineTo(x + w, y + h - r); ctx.quadraticCurveTo(x + w, y + h, x + w - r, y + h);
+  ctx.lineTo(x + r, y + h);     ctx.quadraticCurveTo(x, y + h, x, y + h - r);
+  ctx.lineTo(x, y + r);         ctx.quadraticCurveTo(x, y, x + r, y);
+  ctx.closePath();
+}
+
+// ─── Draw helpers ─────────────────────────────────────────────────────────────
+
+// 写真を使ってキャラクターの顔を円形に描画
+function drawAoTFace(ctx, x, y, r, _angle, lv, vscale) {
+  ctx.save();
+  ctx.translate(x, y);
+  const vs = Math.min(1, vscale || 1);
+  if (vs < 1) ctx.scale(vs, vs);
+
+  const c = AOTS[lv];
+  const [cr, cg, cb] = hex2rgb(c.color);
+
+  // ── グロー ──
+  const gw = ctx.createRadialGradient(0, 0, r*.3, 0, 0, r*1.9);
+  gw.addColorStop(0, `rgba(${cr},${cg},${cb},0.28)`);
+  gw.addColorStop(1, `rgba(${cr},${cg},${cb},0)`);
+  ctx.fillStyle = gw;
+  ctx.beginPath(); ctx.arc(0, 0, r*1.9, 0, Math.PI*2); ctx.fill();
+
+  // ── 写真を円形にクリップして描画 ──
+  ctx.save();
+  ctx.beginPath();
+  ctx.arc(0, 0, r, 0, Math.PI*2);
+  ctx.clip();
+
+  const img = charImgs[lv];
+  if (img.complete && img.naturalWidth > 0) {
+    // 画像をアスペクト比を保ちつつ円内に収める（cover）
+    const iw = img.naturalWidth, ih = img.naturalHeight;
+    const scale = Math.max(r * 2 / iw, r * 2 / ih);
+    const dw = iw * scale, dh = ih * scale;
+    ctx.drawImage(img, -dw / 2, -dh / 2, dw, dh);
+  } else {
+    // 未ロード時はキャラカラーで塗りつぶし
+    ctx.fillStyle = c.color;
+    ctx.beginPath(); ctx.arc(0, 0, r, 0, Math.PI*2); ctx.fill();
+  }
+  ctx.restore();
+
+  // ── 枠線 ──
+  ctx.strokeStyle = `rgba(${cr},${cg},${cb},0.75)`;
+  ctx.lineWidth   = Math.max(1.5, r * 0.07);
+  ctx.beginPath(); ctx.arc(0, 0, r, 0, Math.PI*2); ctx.stroke();
+
+  ctx.restore();
+}
+
+// レベルに対応した描画ラッパー
+function drawCircleFruit(ctx, x, y, r, angle, color, _emoji, vscale) {
+  const lv = FRUITS.findIndex(f => f.color === color);
+  drawAoTFace(ctx, x, y, r, angle, lv >= 0 ? lv : 0, vscale);
+}
+
+// ─── Main canvas ─────────────────────────────────────────────────────────────
+const canvas = document.getElementById('game');
+const ctx    = canvas.getContext('2d');
+
+function drawBg() {
+  ctx.fillStyle = '#0d0d1f';
+  ctx.fillRect(0, 0, CW, CH);
+
+  // Top area tint
+  const tg = ctx.createLinearGradient(0, 0, 0, BT);
+  tg.addColorStop(0, 'rgba(110,70,255,0.09)');
+  tg.addColorStop(1, 'transparent');
+  ctx.fillStyle = tg; ctx.fillRect(0, 0, CW, BT);
+
+  // Box interior
+  const bg = ctx.createLinearGradient(BL, BT, BL, BB);
+  bg.addColorStop(0, 'rgba(255,255,255,0.012)');
+  bg.addColorStop(1, 'rgba(255,255,255,0.028)');
+  ctx.fillStyle = bg;
+  ctx.fillRect(BL, BT, BR - BL, BB - BT);
+
+  // Grid
+  ctx.strokeStyle = 'rgba(255,255,255,0.022)';
+  ctx.lineWidth = 1;
+  for (let x = BL + 40; x < BR; x += 40) {
+    ctx.beginPath(); ctx.moveTo(x, BT); ctx.lineTo(x, BB); ctx.stroke();
+  }
+  for (let y = BT + 40; y < BB; y += 40) {
+    ctx.beginPath(); ctx.moveTo(BL, y); ctx.lineTo(BR, y); ctx.stroke();
+  }
+}
+
+function drawWalls() {
+  const danger = dangerTick > 0;
+  const pulse  = danger ? 0.3 + 0.3 * Math.sin(frame * 0.22) : 0;
+
+  ctx.shadowColor = danger ? '#ff5555' : '#7755ff';
+  ctx.shadowBlur  = 10 + pulse * 14;
+  ctx.strokeStyle = danger
+    ? `rgba(255,80,80,${0.55 + pulse})`
+    : 'rgba(140,100,255,0.6)';
+  ctx.lineWidth = 2;
+  ctx.beginPath();
+  ctx.moveTo(BL, 0); ctx.lineTo(BL, BB);
+  ctx.lineTo(BR, BB); ctx.lineTo(BR, 0);
+  ctx.stroke();
+  ctx.shadowBlur = 0;
+
+  // Danger dashed line
+  ctx.strokeStyle = danger
+    ? `rgba(255,90,90,${0.4 + pulse * 0.55})`
+    : 'rgba(255,255,255,0.07)';
+  ctx.lineWidth = 1;
+  ctx.setLineDash([8, 5]);
+  ctx.beginPath(); ctx.moveTo(BL, BT); ctx.lineTo(BR, BT); ctx.stroke();
+  ctx.setLineDash([]);
+
+  if (danger && dangerTick > 20) {
+    ctx.globalAlpha = Math.min(1, (dangerTick - 20) / 25) * (0.45 + 0.55 * Math.sin(frame * 0.28));
+    ctx.fillStyle   = '#ff8888';
+    ctx.font        = 'bold 10px sans-serif';
+    ctx.textAlign   = 'right';
+    ctx.fillText('DANGER', BR - 5, BT - 4);
+    ctx.globalAlpha = 1;
+  }
+}
+
+function drawFruits() {
+  for (const body of fruits) {
+    if (body.vscale < 1) body.vscale = Math.min(1, body.vscale + 0.07);
+    const f = FRUITS[body.fruitLevel];
+    drawCircleFruit(ctx,
+      body.position.x, body.position.y,
+      f.r, body.angle, f.color, f.emoji, body.vscale
+    );
+  }
+}
+
+function drawPreview() {
+  if (!canDrop || gameOver) return;
+  const f = FRUITS[curLevel];
+  const x = clamp(mouseX, BL + f.r + 1, BR - f.r - 1);
+
+  ctx.strokeStyle = 'rgba(255,255,255,0.11)';
+  ctx.lineWidth = 1;
+  ctx.setLineDash([5, 7]);
+  ctx.beginPath(); ctx.moveTo(x, DROP_Y + f.r); ctx.lineTo(x, BB); ctx.stroke();
+  ctx.setLineDash([]);
+
+  ctx.globalAlpha = 0.52;
+  drawCircleFruit(ctx, x, DROP_Y, f.r, 0, f.color, f.emoji, 1);
+  ctx.globalAlpha = 1;
+}
+
+function drawParticles() {
+  for (const p of particles) {
+    ctx.save();
+    ctx.globalAlpha = p.alpha;
+    ctx.fillStyle   = p.color;
+    ctx.beginPath(); ctx.arc(p.x, p.y, p.r, 0, Math.PI * 2); ctx.fill();
+    ctx.restore();
+  }
+}
+
+function drawPopups() {
+  ctx.textAlign = 'center';
+  for (const p of popups) {
+    ctx.save();
+    ctx.globalAlpha = p.alpha;
+    ctx.font        = 'bold 18px sans-serif';
+    ctx.strokeStyle = 'rgba(0,0,0,0.55)';
+    ctx.lineWidth   = 3;
+    ctx.strokeText(p.text, p.x, p.y);
+    ctx.fillStyle = '#fff';
+    ctx.fillText(p.text, p.x, p.y);
+    ctx.restore();
+  }
+}
+
+function drawTitle() {
+  ctx.textAlign = 'center';
+  ctx.font      = 'bold 18px sans-serif';
+  ctx.fillStyle = 'rgba(255,255,255,0.65)';
+  ctx.fillText('⚔️ 進撃ドロップ', CW / 2, 30);
+  ctx.font      = '11px sans-serif';
+  ctx.fillStyle = 'rgba(255,255,255,0.22)';
+  ctx.fillText('クリックでドロップ', CW / 2, 50);
+}
+
+function drawGameOver() {
+  if (!gameOver) return;
+
+  ctx.fillStyle = 'rgba(0,0,0,0.72)';
+  ctx.fillRect(0, 0, CW, CH);
+
+  const cx = CW / 2, cy = CH / 2 - 10;
+  ctx.fillStyle = 'rgba(22,14,50,0.96)';
+  ctx.strokeStyle = 'rgba(160,110,255,0.5)';
+  ctx.lineWidth = 1.5;
+  rrect(ctx, cx - 145, cy - 110, 290, 215, 22);
+  ctx.fill(); ctx.stroke();
+
+  ctx.textAlign = 'center';
+  ctx.fillStyle = 'white';
+  ctx.font = 'bold 34px sans-serif';
+  ctx.fillText('GAME OVER', cx, cy - 58);
+
+  ctx.font = '15px sans-serif';
+  ctx.fillStyle = 'rgba(255,255,255,0.55)';
+  ctx.fillText(`スコア :  ${score}`, cx, cy - 18);
+  ctx.fillText(`ベスト :  ${best}`,  cx, cy + 10);
+
+  // Button
+  const bx = cx, by = cy + 68;
+  ctx.fillStyle = 'rgba(110,65,240,0.88)';
+  rrect(ctx, bx - 95, by - 22, 190, 44, 22); ctx.fill();
+  ctx.fillStyle = 'white';
+  ctx.font = 'bold 16px sans-serif';
+  ctx.fillText('もう一度プレイ', bx, by + 6);
+}
+
+// ─── Next fruit sidebar ───────────────────────────────────────────────────────
+const nextCtx = document.getElementById('nextCanvas').getContext('2d');
+
+function renderNext() {
+  nextCtx.clearRect(0, 0, 120, 72);
+  const f = FRUITS[nxtLevel];
+  const r = Math.min(f.r, 32);
+  drawCircleFruit(nextCtx, 60, 36, r, 0, f.color, f.emoji, 1);
+}
+
+// ─── Fruit guide ─────────────────────────────────────────────────────────────
+function buildGuide() {
+  document.getElementById('guide').innerHTML =
+    FRUITS.map(f =>
+      `<div class="guide-item"><span class="fi">${f.emoji}</span><span>${f.name}</span></div>`
+    ).join('');
+}
+
+// ─── Events ──────────────────────────────────────────────────────────────────
+canvas.addEventListener('mousemove', e => {
+  const rect = canvas.getBoundingClientRect();
+  mouseX = (e.clientX - rect.left) * (CW / rect.width);
+});
+
+canvas.addEventListener('click', () => {
+  initAudio();
+  if (gameOver) { restart(); return; }
+  drop();
+});
+
+// タッチ開始: 位置を更新（タップのみの場合も対応）
+canvas.addEventListener('touchstart', e => {
+  e.preventDefault();
+  const rect = canvas.getBoundingClientRect();
+  mouseX = (e.touches[0].clientX - rect.left) * (CW / rect.width);
+}, { passive: false });
+
+canvas.addEventListener('touchmove', e => {
+  e.preventDefault();
+  const rect = canvas.getBoundingClientRect();
+  mouseX = (e.touches[0].clientX - rect.left) * (CW / rect.width);
+}, { passive: false });
+
+canvas.addEventListener('touchend', e => {
+  e.preventDefault();
+  initAudio(); // スマホでの音声初期化
+  if (gameOver) { restart(); return; }
+  drop();
+}, { passive: false });
+
+// ─── Main loop ────────────────────────────────────────────────────────────────
+let lastT = 0;
+
+function loop(t) {
+  const dt = Math.min(t - lastT, 50);
+  lastT = t;
+  frame++;
+
+  if (!gameOver) {
+    Engine.update(engine, dt);
+    processMerges();
+    tickParticles();
+    checkGameOver();
+  }
+
+  drawBg();
+  drawWalls();
+  drawParticles();
+  drawFruits();
+  drawPreview();
+  drawTitle();
+  drawPopups();
+  drawGameOver();
+
+  requestAnimationFrame(loop);
+}
+
+// ─── Init ─────────────────────────────────────────────────────────────────────
+document.getElementById('bestTxt').textContent = best;
+buildGuide();
+renderNext();
+requestAnimationFrame(loop);
+</script>
+</body>
+</html>
